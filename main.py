@@ -1,40 +1,35 @@
-import time
+import logging
+import struct
+import sys
 
-from radio.xbee import XBee
 from argparse import ArgumentParser
 
-import logging
-import sys
+from radio.xbee import XBee
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 
 class TestRadio(XBee):
-    def on_message_received(self, remote, data):
-        logging.info(remote, ':', data)
+    def on_message_received(self, remote_address, data):
+        number, = struct.unpack('i', data)
+        print(number)
+        self.send(remote_address, struct.pack('i', number + 1))
 
 
 def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
-    parser.add_argument('--read',  action='store_true')
+    parser.add_argument('--init', action='store_true')
     args = parser.parse_args()
 
-    xbee = XBee(args.device)
+    xbee = TestRadio(args.device)
 
     xbee.open()
 
-    if not args.read:
-        xbee.send_broadcast("hello!")
-        xbee.send()
+    if args.init:
+        xbee.send_broadcast(struct.pack('i', 0))
 
-    i = 0
-    while True:
-        if not args.read:
-            i += 1
-            xbee.send_broadcast(str(i))
-            logging.getLogger().info(str(i))
-        time.sleep(1/3)
+    input()
 
     xbee.close()
 
