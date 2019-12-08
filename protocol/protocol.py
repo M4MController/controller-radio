@@ -59,12 +59,12 @@ class Protocol(XBee):
 
 		if command == self.COMMAND_INTRODUCE:
 			gps = Vector(0, 0)
-			gps.lon, = struct.pack('f', data[1:9])
-			gps.lat, = struct.pack('f', data[9:17])
+			gps.lon, = struct.pack('f', data[1:5])
+			gps.lat, = struct.pack('f', data[5:9])
 
 			vel = Vector(0, 0)
-			vel.lon, = struct.pack('f', data[17:25])
-			vel.lat, = struct.pack('f', data[26:34])
+			vel.lon, = struct.pack('f', data[10:14])
+			vel.lat, = struct.pack('f', data[15:19])
 
 			self.on_introduce_received(remote_address, gps, vel)
 
