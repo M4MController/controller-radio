@@ -1,12 +1,20 @@
 import logging
-from digi.xbee.devices import XBeeDevice
+import typing
+
+from digi.xbee.devices import XBeeDevice, RemoteXBeeDevice
+from digi.xbee.models.address import XBee64BitAddress
 
 logger = logging.getLogger()
 
 
 class XBee:
-    def __init__(self, port, baud_rate=9600):
+    def __init__(self, port: str, baud_rate: int = 9600):
         self._device = XBeeDevice(port, baud_rate)
+
+    def _normalize_data(self, data: typing.Union[bytearray, bytes]):
+        if isinstance(data, bytes):
+            data = bytearray(data)
+        return data
 
     def open(self):
         self._device.open()
@@ -15,14 +23,17 @@ class XBee:
     def close(self):
         self._device.close()
 
-    def send_broadcast(self, mac_address, data):
+    def send_broadcast(self, data: typing.Union[bytearray, bytes]):
+        data = self._normalize_data(data)
         self._device.send_data_broadcast(data)
 
-    def send(self, data):
-        pass
+    def send(self, remote_address: bytearray, data: typing.Union[bytearray, bytes]):
+        data = self._normalize_data(data)
+        remote_device = RemoteXBeeDevice(self._device, x64bit_addr=XBee64BitAddress(remote_address))
+        self._device.send_data(remote_device, data)
 
-    def on_message_received(self, remote, data):
+    def on_message_received(self, remote_address: bytearray, data: bytearray):
         pass
 
     def _on_data_received(self, message):
-        self.on_message_received(message.get_64bit_addr(), message.data)
+        self.on_message_received(message.remote_device.get_64bit_addr().address, message.data)
