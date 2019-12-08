@@ -47,7 +47,7 @@ class Protocol(XBee):
 		data_container.extend(struct.pack('i', len(data)))
 		data_container.extend(data)
 
-		self.send(receiver_mac, data)
+		self.send(receiver_mac, data_container)
 
 	# Called on someone requests for his data to be signed
 	def on_sign_request_received(self, request_id: int, data: data_type):
@@ -59,20 +59,20 @@ class Protocol(XBee):
 
 		if command == self.COMMAND_INTRODUCE:
 			gps = Vector(0, 0)
-			gps.lon, = struct.pack('f', data[1:5])
-			gps.lat, = struct.pack('f', data[5:9])
+			gps.lon, = struct.unpack('f', data[1:5])
+			gps.lat, = struct.unpack('f', data[5:9])
 
 			vel = Vector(0, 0)
-			vel.lon, = struct.pack('f', data[10:14])
-			vel.lat, = struct.pack('f', data[15:19])
+			vel.lon, = struct.unpack('f', data[9:13])
+			vel.lat, = struct.unpack('f', data[13:17])
 
 			self.on_introduce_received(remote_address, gps, vel)
 
 			return
 
 		if command == self.COMMAND_REQUEST_SIGN:
-			size, = struct.pack('i', data[1:5])
-			request_id, = struct.pack('i', data[5: 9])
+			request_id, = struct.unpack('i', data[1: 5])
+			size, = struct.unpack('i', data[5:9])
 			data_for_sign = data[9:9 + size]
 
 			self.on_sign_request_received(request_id, data_for_sign)
