@@ -6,9 +6,9 @@ data_type = typing.Union[bytearray, bytes]
 
 
 class Vector:
-	def __init__(self, lon, lat):
-		self.lon = lon
-		self.lat = lat
+	def __init__(self, lon: float, lat: float):
+		self.lon = float(lon)
+		self.lat = float(lat)
 
 
 class Protocol(XBee):
@@ -21,10 +21,10 @@ class Protocol(XBee):
 		data = bytearray()
 
 		data.append(self.COMMAND_INTRODUCE)
-		data.extend(struct.pack('d', gps.lon))
-		data.extend(struct.pack('d', gps.lat))
-		data.extend(struct.pack('d', velocity.lon))
-		data.extend(struct.pack('d', velocity.lat))
+		data.extend(struct.pack('f', gps.lon))
+		data.extend(struct.pack('f', gps.lat))
+		data.extend(struct.pack('f', velocity.lon))
+		data.extend(struct.pack('f', velocity.lat))
 
 		self.send_broadcast(data)
 
@@ -59,12 +59,12 @@ class Protocol(XBee):
 
 		if command == self.COMMAND_INTRODUCE:
 			gps = Vector(0, 0)
-			gps.lon, = struct.pack('d', data[1:9])
-			gps.lat, = struct.pack('d', data[9:17])
+			gps.lon, = struct.pack('f', data[1:9])
+			gps.lat, = struct.pack('f', data[9:17])
 
 			vel = Vector(0, 0)
-			vel.lon, = struct.pack('d', data[17:25])
-			vel.lat, = struct.pack('d', data[26:34])
+			vel.lon, = struct.pack('f', data[17:25])
+			vel.lat, = struct.pack('f', data[26:34])
 
 			self.on_introduce_received(remote_address, gps, vel)
 
