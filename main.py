@@ -1,20 +1,11 @@
 import logging
-import struct
 import sys
 
 from argparse import ArgumentParser
 
-from radio.xbee import XBee
+from protocol.protocol import Protocol, Vector
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-
-
-class TestRadio(XBee):
-    def on_message_received(self, remote_address, data):
-        number, = struct.unpack('i', data)
-        print(number)
-        self.send(remote_address, struct.pack('i', number + 1))
-
 
 def main():
     parser = ArgumentParser()
@@ -22,12 +13,12 @@ def main():
     parser.add_argument('--init', action='store_true')
     args = parser.parse_args()
 
-    xbee = TestRadio(args.device)
+    xbee = Protocol(args.device)
 
     xbee.open()
 
     if args.init:
-        xbee.send_broadcast(struct.pack('i', 0))
+        xbee.introduce_self(Vector(10, 10), Vector(15, 0))
 
     input()
 
