@@ -1,5 +1,7 @@
 import struct
 import typing
+
+from sign import Signifier
 from radio.xbee import XBee
 
 data_type = typing.Union[bytearray, bytes]
@@ -14,6 +16,11 @@ class Vector:
 class Protocol(XBee):
 	COMMAND_INTRODUCE = 1
 	COMMAND_REQUEST_SIGN = 2
+	COMMAND_RESPONSE_SIGN = 3
+
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self._signifier = Signifier('public_key.pem', 'private_key.pem')
 
 	# GPS - tuple, containing (lon, lat) where lon and lat - 8-byte doubles
 	# Velocity - tuple, containing two 8-byte coordinate components
@@ -50,9 +57,17 @@ class Protocol(XBee):
 		self.send(receiver_mac, data_container)
 
 	# Called on someone requests for his data to be signed
-	def on_sign_request_received(self, request_id: int, data: data_type):
-		print('Request id: ', request_id)
-		print('Data: ', data)
+	def on_sign_request_received(self, remote_address, request_id: int, data: data_type):
+		sign = self._signifier.sign(data)
+
+		data_container = bytearray()
+
+		data_container.append(self.COMMAND_RESPONSE_SIGN)
+		data_container.extend(struct.pack('i', 42))
+		data_container.extend(sign.public_key)
+		data_container.extend(sign.sign)
+
+		self.send(remote_address, data)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
@@ -75,7 +90,7 @@ class Protocol(XBee):
 			size, = struct.unpack('i', data[5:9])
 			data_for_sign = data[9:9 + size]
 
-			self.on_sign_request_received(request_id, data_for_sign)
+			self.on_sign_request_received(remote_address, request_id, data_for_sign)
 
 			return
 
