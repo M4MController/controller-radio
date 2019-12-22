@@ -10,6 +10,6 @@ ADD . .
 ADD sign_unsigned_data.py .
 
 CMD while true; do \
-  python ./sign_unsigned_data.py --db-uri $DB_URI --device /dev/xbee; \
+  python sign_unsigned_data.py --db-uri $DB_URI --device /dev/xbee; \
   sleep 10; \
   done;
