@@ -11,6 +11,7 @@ class XBee:
     def __init__(self, port: str, baud_rate: int = 9600):
         self._device = XBeeDevice(port, baud_rate)
 
+    @classmethod
     def _normalize_data(self, data: typing.Union[bytearray, bytes]):
         if isinstance(data, bytes):
             data = bytearray(data)
@@ -28,7 +29,7 @@ class XBee:
         self._device.send_data_broadcast(data)
 
     def send(self, remote_address: bytearray, data: typing.Union[bytearray, bytes]):
-        data = self._normalize_data(data)
+        data = XBee._normalize_data(data)
         remote_device = RemoteXBeeDevice(self._device, x64bit_addr=XBee64BitAddress(remote_address))
         self._device.send_data(remote_device, data)
 
