@@ -115,8 +115,5 @@ class Protocol(XBee):
 
 			return
 
-
-
-
 	def on_unknown_command_received(self, remote_address: bytearray, data: bytearray):
 		pass
