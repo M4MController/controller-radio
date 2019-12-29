@@ -13,13 +13,13 @@ class Vector:
 		self.lat = float(lat)
 
 
-class Protocol(XBee):
+class Protocol:
 	COMMAND_INTRODUCE = 1
 	COMMAND_REQUEST_SIGN = 2
 	COMMAND_RESPONSE_SIGN = 3
 
-	def __init__(self, *args, **kwargs):
-		super().__init__(*args, **kwargs)
+	def __init__(self, radio: XBee):
+		self._radio = radio
 		self._signifier = Signifier('public_key.pem', 'private_key.pem')
 
 	# GPS - tuple, containing (lon, lat) where lon and lat - 8-byte doubles
@@ -33,7 +33,7 @@ class Protocol(XBee):
 		data.extend(struct.pack('f', velocity.lon))
 		data.extend(struct.pack('f', velocity.lat))
 
-		self.send_broadcast(data)
+		self._radio.send_broadcast(data)
 
 	# Called when someone within range tells his current info
 	def on_introduce_received(self, remote_address: bytearray, gps: Vector, vel: Vector):
@@ -54,7 +54,7 @@ class Protocol(XBee):
 		data_container.extend(struct.pack('i', len(data)))
 		data_container.extend(data)
 
-		self.send(receiver_mac, data_container)
+		self._radio.send(receiver_mac, data_container)
 
 	# Called on someone requests for his data to be signed
 	def on_sign_request_received(self, remote_address, request_id: int, data: data_type):
@@ -67,7 +67,7 @@ class Protocol(XBee):
 		data_container.extend(sign.public_key)
 		data_container.extend(sign.sign)
 
-		self.send(remote_address, data)
+		self._radio.send(remote_address, data)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
