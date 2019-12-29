@@ -63,11 +63,19 @@ class Protocol(XBee):
 		data_container = bytearray()
 
 		data_container.append(self.COMMAND_RESPONSE_SIGN)
-		data_container.extend(struct.pack('i', 42))
+		data_container.extend(struct.pack('i', request_id))
+		data_container.extend(struct.pack('i', len(sign.public_key)))
 		data_container.extend(sign.public_key)
+		data_container.extend(struct.pack('i', len(sign.sign)))
 		data_container.extend(sign.sign)
 
 		self.send(remote_address, data)
+
+	# Called when signed data is received
+	def on_signed_data_received(self, request_id, key, signature):
+		print('Request id: ', request_id)
+		print('key: ', key)
+		print('signature: ', signature)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
@@ -93,6 +101,22 @@ class Protocol(XBee):
 			self.on_sign_request_received(remote_address, request_id, data_for_sign)
 
 			return
+
+		if command == self.COMMAND_RESPONSE_SIGN:
+			request_id, = struct.unpack('i', data[1:5])
+			key_size, = struct.unpack('i', data[5:9])
+			key_right_index = 9 + key_size
+			signature_size_right_index = 4 + key_right_index
+			key = data[9:key_right_index]
+			signature_size, = struct.unpack('i', data[key_right_index:signature_size_right_index])
+			signature = data[signature_size_right_index:signature_size_right_index + signature_size]
+
+			self.on_signed_data_received(request_id, key, signature)
+
+			return
+
+
+
 
 	def on_unknown_command_received(self, remote_address: bytearray, data: bytearray):
 		pass
