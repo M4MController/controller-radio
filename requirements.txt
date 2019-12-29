@@ -1,2 +1,2 @@
 digi-xbee==1.3.0
-pycrypto
+pycryptodome==3.9.4

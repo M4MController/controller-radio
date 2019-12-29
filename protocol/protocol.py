@@ -1,5 +1,6 @@
 import struct
 import typing
+from multiprocessing import Lock
 
 from sign import Signifier
 from radio.xbee import XBee
@@ -13,13 +14,17 @@ class Vector:
 		self.lat = float(lat)
 
 
-class Protocol(XBee):
+class Protocol:
 	COMMAND_INTRODUCE = 1
 	COMMAND_REQUEST_SIGN = 2
 	COMMAND_RESPONSE_SIGN = 3
 
-	def __init__(self, *args, **kwargs):
-		super().__init__(*args, **kwargs)
+	request_id = 0
+	request_lock = Lock()
+
+	def __init__(self, radio: XBee):
+		radio.on_message_received = self.on_message_received
+		self._radio = radio
 		self._signifier = Signifier('public_key.pem', 'private_key.pem')
 
 	# GPS - tuple, containing (lon, lat) where lon and lat - 8-byte doubles
@@ -33,7 +38,7 @@ class Protocol(XBee):
 		data.extend(struct.pack('f', velocity.lon))
 		data.extend(struct.pack('f', velocity.lat))
 
-		self.send_broadcast(data)
+		self._radio.send_broadcast(data)
 
 	# Called when someone within range tells his current info
 	def on_introduce_received(self, remote_address: bytearray, gps: Vector, vel: Vector):
@@ -49,12 +54,15 @@ class Protocol(XBee):
 	def sign_request(self, receiver_mac: data_type, data: data_type):
 		data_container = bytearray()
 
+		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
-		data_container.extend(struct.pack('i', 42))
+		data_container.extend(struct.pack('i', Protocol.request_id))
 		data_container.extend(struct.pack('i', len(data)))
 		data_container.extend(data)
+		Protocol.request_id += 1
+		Protocol.request_lock.release()
 
-		self.send(receiver_mac, data_container)
+		self._radio.send(receiver_mac, data_container)
 
 	# Called on someone requests for his data to be signed
 	def on_sign_request_received(self, remote_address, request_id: int, data: data_type):
@@ -69,7 +77,7 @@ class Protocol(XBee):
 		data_container.extend(struct.pack('i', len(sign.sign)))
 		data_container.extend(sign.sign)
 
-		self.send(remote_address, data)
+		self._radio.send(remote_address, data_container)
 
 	# Called when signed data is received
 	def on_signed_data_received(self, request_id, key, signature):
