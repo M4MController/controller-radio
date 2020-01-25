@@ -5,7 +5,7 @@ import sys
 from argparse import ArgumentParser
 
 from radio.xbee import XBee
-from protocol.protocol import Protocol, Vector, data_type
+from protocol.protocol import Protocol, Vector, data_type, EVENT_INTRODUCE, EVENT_ASK
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
@@ -22,7 +22,10 @@ def introduce_callback_factory(protocol: Protocol):
 
         protocol.sign_request(remote_address, struct.pack('i', 1), signed_callback)
 
-    return introduce_callback
+    def ask_callback(request_id: int, remote_address: data_type):
+        protocol.introduce_to(remote_address, Vector(0, 0), Vector(10, 10))
+
+    return [introduce_callback, ask_callback]
 
 
 def main():
@@ -35,10 +38,12 @@ def main():
     xbee.open()
 
     protocol = Protocol(xbee)
-    protocol.introduce_subscribers(introduce_callback_factory(protocol))
+    callbacks = introduce_callback_factory(protocol)
+    protocol.event(EVENT_ASK, callbacks[1])
 
     if args.init:
-        protocol.introduce_self(Vector(10, 10), Vector(15, 0))
+        protocol.event(EVENT_INTRODUCE, callbacks[0])
+        protocol.ask_network()
 
     input()
 
