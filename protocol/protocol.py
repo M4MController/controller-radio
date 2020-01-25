@@ -2,10 +2,13 @@ import struct
 import typing
 from multiprocessing import Lock
 
+from protocol.container import Container
 from sign import Signifier
 from radio.xbee import XBee
 
 data_type = typing.Union[bytearray, bytes]
+
+EVENT_INTRODUCE = 1
 
 
 class Vector:
@@ -26,6 +29,16 @@ class Protocol:
 		radio.on_message_received = self.on_message_received
 		self._radio = radio
 		self._signifier = Signifier('public_key.pem', 'private_key.pem')
+		self.container = Container()
+		self.introduce_subscribers = []
+
+	def event(self, event: int, callback):
+		if event == EVENT_INTRODUCE:
+			self.introduce_subscribers.append(callback)
+		else:
+			raise Exception("Unknown event")
+
+
 
 	# GPS - tuple, containing (lon, lat) where lon and lat - 8-byte doubles
 	# Velocity - tuple, containing two 8-byte coordinate components
@@ -42,17 +55,16 @@ class Protocol:
 
 	# Called when someone within range tells his current info
 	def on_introduce_received(self, remote_address: bytearray, gps: Vector, vel: Vector):
-		print('Remote address: ', remote_address)
-		print('Gps: lon = ', gps.lon, '; lat = ', gps.lat)
-		print('Velocity: lon = ', vel.lon, '; lat = ', vel.lat)
-
-		self.sign_request(remote_address, bytes([1]))
+		for subscriber in self.introduce_subscribers:
+			subscriber(remote_address, gps, vel)
 
 	# Send data to sign to node with receiver_mac
 	# receiver_mac should be bytearray of size 6
 	# Data should be bytearray or bytes
-	def sign_request(self, receiver_mac: data_type, data: data_type):
+	def sign_request(self, receiver_mac: data_type, data: data_type, callback):
 		data_container = bytearray()
+
+		self.container.append(Protocol.request_id, callback)
 
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
@@ -65,7 +77,7 @@ class Protocol:
 		self._radio.send(receiver_mac, data_container)
 
 	# Called on someone requests for his data to be signed
-	def on_sign_request_received(self, remote_address, request_id: int, data: data_type):
+	def on_sign_request_received(self, remote_address: data_type, request_id: int, data: data_type):
 		sign = self._signifier.sign(data)
 
 		data_container = bytearray()
@@ -80,10 +92,9 @@ class Protocol:
 		self._radio.send(remote_address, data_container)
 
 	# Called when signed data is received
-	def on_signed_data_received(self, request_id, key, signature):
-		print('Request id: ', request_id)
-		print('key: ', key)
-		print('signature: ', signature)
+	def on_signed_data_received(self, request_id: int, key: data_type, signature: data_type):
+		callback = self.container.remove(request_id)
+		callback(key, signature)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
