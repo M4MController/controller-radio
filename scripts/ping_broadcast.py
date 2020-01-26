@@ -35,7 +35,7 @@ class Ping:
 
     def on_message_received(self, remote_address: bytearray, data: bytearray):
         value, = struct.unpack("i", data)
-        time = self._map.get(value, None)
+        time = self._map.pop(value, None)
         if time is not None:
             logging.critical("Ping\t%s\t%s ms", remote_address, (datetime.now() - time).microseconds)
         else:
