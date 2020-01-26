@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import sys
@@ -31,13 +32,20 @@ class SensorData(Base):
     signer = Column(LargeBinary)
 
 
-def sign_data(protocol: Protocol, data: bytearray):
-    sign = Signature(b'signifier public key', b'sign')  # todo: stub
+async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
+    future = asyncio.Future()
+    loop = asyncio.get_event_loop()
 
-    if Signifier.verify(data, sign):
-        return sign
-    else:
-        raise Exception('sign verification failed')
+    def callback(public_key, sign):
+        signature = Signature(public_key, sign)
+        if Signifier.verify(data, sign):
+            loop.call_soon_threasafe(future.set_result, signature)
+        else:
+            loop.call_soon_threasafe(future.set_exception, Exception('sign verification failed'))
+
+    protocol.sign_request(device, data, callback)
+
+    return await future
 
 
 def get_unsigned_data(session):
@@ -45,33 +53,47 @@ def get_unsigned_data(session):
 
 
 def save_signed_data(session, data: SensorData, signature: Signature):
+    logging.info('Sign received: %s %s', data.id, signature.sign)
     session.query(SensorData).filter_by(id=data.id).update({'sign': signature.sign, 'signer': signature.public_key})
 
 
-def main():
+async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
     parser.add_argument('--db-uri', required=True)
 
     args = parser.parse_args()
 
-    xbee = XBee(args.device)
+    xbee = XBee(args.device, baud_rate=9600)
+    xbee.open()
     protocol = Protocol(xbee)
+
+    device = await protocol.discover_first_remote_device()
+    if device is None:
+        raise Exception('no devices found')
+
+    logging.info('Device found: %s', device)
 
     session = Session(create_engine(args.db_uri))
 
     all_unsigned_sensor_data = get_unsigned_data(session)
     logging.info('%d unsigned data', len(all_unsigned_sensor_data))
     for unsigned_sensor_data in all_unsigned_sensor_data:
-        unsigned_data = bytearray()
-        unsigned_data.extend(map(ord, json.dumps(unsigned_sensor_data.data)))
+        try:
+            logging.info("Signing %d (%s)", unsigned_sensor_data.id, unsigned_sensor_data.data['timestamp'])
+            unsigned_data = bytearray()
+            unsigned_data.extend(map(ord, json.dumps(unsigned_sensor_data.data)))
 
-        sign = sign_data(protocol, unsigned_data)
-        save_signed_data(session, unsigned_sensor_data, sign)
+            sign = await sign_data(protocol, unsigned_data, device)
+            save_signed_data(session, unsigned_sensor_data, sign)
 
-        session.commit()
-        logging.info("Signed %d (%s)", unsigned_sensor_data.id, unsigned_sensor_data.data['timestamp'])
+            session.commit()
+            logging.info("Signed %d (%s)", unsigned_sensor_data.id, unsigned_sensor_data.data['timestamp'])
+        except Exception as e:
+            logging.error('error %s', e)
 
 
 if __name__ == '__main__':
-    main()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()

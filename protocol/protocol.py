@@ -1,3 +1,4 @@
+import logging
 import struct
 import typing
 from multiprocessing import Lock
@@ -30,7 +31,7 @@ class Protocol:
 	def __init__(self, radio: XBee):
 		radio.on_message_received = self.on_message_received
 		self._radio = radio
-		self._signifier = Signifier('public_key.pem', 'private_key.pem')
+		self._signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
 		self.container = Container()
 		self.introduce_subscribers = []
 		self.ask_subscribers = []
@@ -42,51 +43,6 @@ class Protocol:
 			self.ask_subscribers.append(callback)
 		else:
 			raise Exception("Unknown event")
-
-	# GPS - tuple, containing (lon, lat) where lon and lat - 8-byte doubles
-	# Velocity - tuple, containing two 8-byte coordinate components
-	def introduce_self(self, gps: Vector, velocity: Vector):
-		data = bytearray()
-
-		data.append(self.COMMAND_INTRODUCE)
-		data.extend(struct.pack('f', gps.lon))
-		data.extend(struct.pack('f', gps.lat))
-		data.extend(struct.pack('f', velocity.lon))
-		data.extend(struct.pack('f', velocity.lat))
-
-		self._radio.send_broadcast(data)
-
-	def introduce_to(self, remote_address: data_type, gps: Vector, velocity: Vector):
-		data = bytearray()
-
-		data.append(self.COMMAND_INTRODUCE)
-		data.extend(struct.pack('f', gps.lon))
-		data.extend(struct.pack('f', gps.lat))
-		data.extend(struct.pack('f', velocity.lon))
-		data.extend(struct.pack('f', velocity.lat))
-
-		self._radio.send(remote_address, data)
-
-	# Called when someone within range tells his current info
-	def on_introduce_received(self, remote_address: bytearray, gps: Vector, vel: Vector):
-		for subscriber in self.introduce_subscribers:
-			subscriber(remote_address, gps, vel)
-			
-	# Broadcast to who is available at the moment
-	def ask_network(self):
-		data = bytearray()
-		
-		Protocol.request_lock.acquire()
-		data.append(self.COMMAND_ASK_NETWORK)
-		data.extend(struct.pack('i', Protocol.request_id))
-		Protocol.request_id += 1
-		Protocol.request_lock.release()
-		
-		self._radio.send_broadcast(data)
-		
-	def on_ask_network(self, request_id: int, remote_address: data_type):
-		for subscriber in self.ask_subscribers:
-			subscriber(request_id, remote_address)
 
 	# Send data to sign to node with receiver_mac
 	# receiver_mac should be bytearray of size 6
@@ -122,25 +78,14 @@ class Protocol:
 		self._radio.send(remote_address, data_container)
 
 	# Called when signed data is received
-	def on_signed_data_received(self, request_id: int, key: data_type, signature: data_type):
+	def on_signed_data_received(self, request_id: int, public_key: data_type, signature: data_type):
 		callback = self.container.remove(request_id)
-		callback(key, signature)
+		callback(public_key, signature)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
 
-		if command == self.COMMAND_INTRODUCE:
-			gps = Vector(0, 0)
-			gps.lon, = struct.unpack('f', data[1:5])
-			gps.lat, = struct.unpack('f', data[5:9])
-
-			vel = Vector(0, 0)
-			vel.lon, = struct.unpack('f', data[9:13])
-			vel.lat, = struct.unpack('f', data[13:17])
-
-			self.on_introduce_received(remote_address, gps, vel)
-
-			return
+		logging.info('Command received: %s %s', remote_address, command)
 
 		if command == self.COMMAND_REQUEST_SIGN:
 			request_id, = struct.unpack('i', data[1: 5])
@@ -164,10 +109,8 @@ class Protocol:
 
 			return
 
-		if command == self.COMMAND_ASK_NETWORK:
-			request_id, = struct.unpack('i', data[1:5])
-
-			self.on_ask_network(request_id, remote_address)
-
 	def on_unknown_command_received(self, remote_address: bytearray, data: bytearray):
 		pass
+
+	def discover_first_remote_device(self):
+		return self._radio.discover_first_remote_device()

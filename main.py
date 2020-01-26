@@ -7,7 +7,7 @@ from argparse import ArgumentParser
 from radio.xbee import XBee
 from protocol.protocol import Protocol, Vector, data_type, EVENT_INTRODUCE, EVENT_ASK
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
 def introduce_callback_factory(protocol: Protocol):
