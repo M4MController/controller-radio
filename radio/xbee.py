@@ -1,9 +1,12 @@
 import asyncio
 import logging
+import random
 import typing
 
 from digi.xbee.devices import XBeeDevice, RemoteXBeeDevice
 from digi.xbee.models.address import XBee64BitAddress
+
+from serializer import BaseModel
 
 logger = logging.getLogger()
 
@@ -12,7 +15,23 @@ def get_address(device) -> bytearray:
     return device.get_64bit_addr().address
 
 
+class InitFrame(BaseModel):
+    fields = {
+        'id': int,
+        'size': int,
+    }
+
+
+class Frame(BaseModel):
+    fields = {
+        'id': int,
+        'data': bytearray,
+    }
+
+
 class XBee:
+    _buffer = {}
+
     def __init__(self, port: str, baud_rate: int = 9600):
         self._device = XBeeDevice(port, baud_rate)
 
@@ -36,7 +55,19 @@ class XBee:
     def send(self, remote_address: bytearray, data: typing.Union[bytearray, bytes]):
         data = XBee._normalize_data(data)
         remote_device = RemoteXBeeDevice(self._device, x64bit_addr=XBee64BitAddress(remote_address))
-        self._device.send_data(remote_device, data)
+
+        id = random.randint(0, 4000000)
+        init_frame = InitFrame(id=id, size=len(data))
+
+        self._device.send_data(remote_device, init_frame.serialize())
+
+        sent = 0
+        while sent < len(data):
+            s = data[sent:sent + 50]
+            frame = Frame(id=id, data=s)
+
+            self._device.send_data(remote_device, frame.serialize())
+            sent += len(s)
 
     async def discover_first_remote_device(self, discovery_timeout=25) -> typing.Optional[bytearray]:
         network = self._device.get_network()
@@ -54,4 +85,16 @@ class XBee:
         pass
 
     def _on_data_received(self, message):
-        self.on_message_received(get_address(message.remote_device), message.data)
+        init_frame = InitFrame.deserialize(message.data)
+        if init_frame.id in self._buffer:
+            frame = Frame.deserialize(message.data)
+            self._buffer[frame.id][1].extend(frame.data)
+
+            full_size = self._buffer[frame.id][0]
+            if len(self._buffer[frame.id][1]) >= full_size:
+                self.on_message_received(get_address(message.remote_device), self._buffer[frame.id][1][:full_size])
+                del self._buffer[frame.id]
+        else:
+            self._buffer[init_frame.id] = [init_frame.size, bytearray()]
+
+

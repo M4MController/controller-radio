@@ -18,7 +18,7 @@ from radio.xbee import XBee
 from protocol.protocol import Protocol
 from sign import Signature, Signifier
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 Base = declarative_base()
 
@@ -38,10 +38,10 @@ async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
 
     def callback(public_key, sign):
         signature = Signature(public_key, sign)
-        if Signifier.verify(data, sign):
-            loop.call_soon_threasafe(future.set_result, signature)
+        if Signifier.verify(data, signature):
+            loop.call_soon_threadsafe(future.set_result, signature)
         else:
-            loop.call_soon_threasafe(future.set_exception, Exception('sign verification failed'))
+            loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
 
     protocol.sign_request(device, data, callback)
 
