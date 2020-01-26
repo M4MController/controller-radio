@@ -1,10 +1,24 @@
+import asyncio
 import logging
-import struct
 import sys
 
 from argparse import ArgumentParser
+from random import randint
 
 from radio.xbee import XBee
+from serializer import BaseModel
+
+
+class Ball(BaseModel):
+    fields = {
+        'index': int,
+        'payload': bytearray,
+    }
+
+
+def generate_payload(len):
+    return bytearray([randint(0, 255) for _ in range(len)])
+
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -18,24 +32,35 @@ class PingPong:
         self._device = xbee
         self._device.on_message_received = self.on_message_received
 
-    def init(self):
-        self._device.send_broadcast(bytearray(struct.pack('i', 0)))
+    async def init(self):
+        logging.info('init')
+        address = await self._device.discover_first_remote_device()
+        logging.info('address\t')
+        self._device.send(address, Ball(index=0, payload=generate_payload(5)).serialize())
 
-    def send(self, remote_address: bytearray, value: bytearray):
-        data = bytearray(struct.pack('i', value))
+    def send(self, remote_address: bytearray, data: bytearray):
+        ball = Ball.deserialize(data)
+        ball.index += 1
+        ball.payload = generate_payload(ball.index)
         try:
-            self._device.send(remote_address, data)
-            logging.info("Send\t%s\t%d", remote_address, value)
+            self._device.send(remote_address, ball.serialize())
+            logging.info("Send\t%s\t%d", remote_address, ball.index)
         except Exception as e:
             logging.error("Send error\t%s\t%s", remote_address, e)
 
     def on_message_received(self, remote_address: bytearray, data: bytearray):
-        value, = struct.unpack("i", data)
-        logging.info("Receive\t%s\t%d", remote_address, value)
-        self.send(remote_address, value + 1)
+        ball = Ball.deserialize(data)
+        logging.info("Receive\t%s\t%d", remote_address, ball.index)
+        ball.index += 1
+        ball.payload = generate_payload(ball.index)
+        try:
+            self._device.send(remote_address, ball.serialize())
+            logging.info("Send\t%s\t%d", remote_address, ball.index)
+        except Exception as e:
+            logging.error("Send error\t%s\t%s", remote_address, e)
 
 
-def main():
+async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
     parser.add_argument('--init', action='store_true')
@@ -48,7 +73,7 @@ def main():
     ping_pong = PingPong(xbee)
 
     if args.init:
-        ping_pong.init()
+        await ping_pong.init()
 
     input()
 
@@ -56,4 +81,6 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()

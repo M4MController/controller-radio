@@ -41,10 +41,6 @@ def main():
     callbacks = introduce_callback_factory(protocol)
     protocol.event(EVENT_ASK, callbacks[1])
 
-    if args.init:
-        protocol.event(EVENT_INTRODUCE, callbacks[0])
-        protocol.ask_network()
-
     input()
 
     xbee.close()
