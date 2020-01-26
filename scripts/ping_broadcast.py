@@ -1,38 +1,45 @@
 import logging
 import struct
 import sys
+import time
 
 from argparse import ArgumentParser
+from datetime import datetime
+from random import randint
 
 from radio.xbee import XBee
 
 logging.basicConfig(
     stream=sys.stdout,
-    level=logging.INFO,
+    level=logging.CRITICAL,
     format='%(asctime)s [%(levelname)s] %(message)s',
 )
 
 
-class PingPong:
+class Ping:
+    _map = {}
+
     def __init__(self, xbee: XBee):
         self._device = xbee
         self._device.on_message_received = self.on_message_received
 
-    def init(self):
-        self._device.send_broadcast(bytearray(struct.pack('i', 0)))
-
-    def send(self, remote_address: bytearray, value: bytearray):
+    def ping(self):
+        value = randint(0, 4000000)
+        self._map[value] = datetime.now()
         data = bytearray(struct.pack('i', value))
         try:
-            self._device.send(remote_address, data)
-            logging.info("Send\t%s\t%d", remote_address, value)
+            self._device.send_broadcast(data)
+            logging.info("Send\t%s\t%d", value)
         except Exception as e:
-            logging.error("Send error\t%s\t%s", remote_address, e)
+            logging.error("Send error\t%s\t%s", e)
 
     def on_message_received(self, remote_address: bytearray, data: bytearray):
         value, = struct.unpack("i", data)
-        logging.info("Receive\t%s\t%d", remote_address, value)
-        self.send(remote_address, value + 1)
+        time = self._map.get(value, None)
+        if time is not None:
+            logging.critical("Ping\t%s\t%s ms", remote_address, (datetime.now() - time).microseconds)
+        else:
+            logging.critical("Invalid pong\t %s", value)
 
 
 def main():
@@ -45,12 +52,10 @@ def main():
     xbee = XBee(args.device, baud_rate=9600)
     xbee.open()
 
-    ping_pong = PingPong(xbee)
+    ping = Ping(xbee)
 
-    if args.init:
-        ping_pong.init()
-
-    input()
+    while True:
+        ping.ping()
 
     xbee.close()
 
