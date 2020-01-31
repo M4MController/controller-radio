@@ -18,7 +18,7 @@ from radio.xbee import XBee
 from protocol.protocol import Protocol
 from sign import Signature, Signifier
 
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 Base = declarative_base()
 
