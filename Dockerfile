@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 ADD . .
 
-CMD python main.py --device /dev/xbee
+CMD python main.py --device $DEVICE
