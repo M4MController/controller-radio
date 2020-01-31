@@ -1,6 +1,7 @@
 import logging
 import struct
 import sys
+import time
 
 from argparse import ArgumentParser
 
@@ -41,7 +42,8 @@ def main():
     callbacks = introduce_callback_factory(protocol)
     protocol.event(EVENT_ASK, callbacks[1])
 
-    input()
+    while True:
+        time.sleep(100)
 
     xbee.close()
 
