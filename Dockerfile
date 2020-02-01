@@ -3,9 +3,11 @@ MAINTAINER Eduard Asriyan <ed-asriyan@protonmail.com>
 
 WORKDIR /application
 
+RUN openssl genrsa -out private_key.pem 2048 && openssl rsa -in private_key.pem -outform PEM -pubout -out public_key.pem
+
 ADD requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 ADD . .
 
-CMD python main.py --device /dev/xbee
+CMD python main.py --device $DEVICE
