@@ -74,7 +74,7 @@ class XBee:
         network.set_discovery_timeout(discovery_timeout)
         network.start_discovery_process()
         await asyncio.sleep(1)
-        while network.is_discovery_running() or not network.get_devices():
+        while network.is_discovery_running() and not network.get_devices():
             await asyncio.sleep(1)
         network.stop_discovery_process()
 

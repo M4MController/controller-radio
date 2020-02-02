@@ -1,52 +1,77 @@
+import asyncio
 import logging
-import struct
+import os
 import sys
 import time
 
 from argparse import ArgumentParser
 
+from database import Database
 from radio.xbee import XBee
-from protocol.protocol import Protocol, Vector, data_type, EVENT_INTRODUCE, EVENT_ASK
+from protocol.protocol import Protocol
+from sign import Signature, Signifier
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 
 
-def introduce_callback_factory(protocol: Protocol):
-    def signed_callback(key: data_type, signature: data_type):
-        print('Key: ', key)
-        print('Signature: ', signature)
+async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
+    future = asyncio.Future()
+    loop = asyncio.get_event_loop()
 
-    def introduce_callback(remote_address: data_type, gps: Vector, velocity: Vector):
-        print('Remote address: ', remote_address)
-        print('Gps: ', gps)
-        print('Velocity: ', velocity)
+    def callback(public_key, sign):
+        signature = Signature(public_key, sign)
+        if Signifier.verify(data, signature):
+            loop.call_soon_threadsafe(future.set_result, signature)
+        else:
+            loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
 
-        protocol.sign_request(remote_address, struct.pack('i', 1), signed_callback)
+    protocol.sign_request(device, data, callback)
 
-    def ask_callback(request_id: int, remote_address: data_type):
-        protocol.introduce_to(remote_address, Vector(0, 0), Vector(10, 10))
-
-    return [introduce_callback, ask_callback]
+    return await future
 
 
-def main():
+async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
-    parser.add_argument('--init', action='store_true')
+    parser.add_argument('--db-uri', required=True)
+
+    use_stubs = bool(os.environ.get('USE_STUBS', False))
+
     args = parser.parse_args()
 
-    xbee = XBee(args.device)
-    xbee.open()
+    if not use_stubs:
+        xbee = XBee(args.device)
+        xbee.open()
 
-    protocol = Protocol(xbee)
-    callbacks = introduce_callback_factory(protocol)
-    protocol.event(EVENT_ASK, callbacks[1])
+        protocol = Protocol(xbee)
+    else:
+        signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
+
+    database = Database(args.db_uri)
 
     while True:
-        time.sleep(100)
+        unsigned_data = database.get_unsigned_data()
+
+        if not use_stubs:
+            device = await protocol.discover_first_remote_device()
+            if device is None:
+                logging.info('No devices nearby')
+                continue
+            logging.info('Nearby device found: %s', device)
+
+        if not use_stubs:
+            for data in unsigned_data:
+                sign = await sign_data(protocol, data.get_data_for_sign(), device)
+                database.set_sign(data, sign)
+        else:
+            for data in unsigned_data:
+                sign = signifier.sign(data.get_data_for_sign())
+                database.set_sign(data, sign)
 
     xbee.close()
 
 
 if __name__ == '__main__':
-    main()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
