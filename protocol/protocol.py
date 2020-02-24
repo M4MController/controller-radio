@@ -62,6 +62,8 @@ class Protocol:
 	def sign_request(self, receiver_mac: data_type, data: data_type, callback):
 		data_container = bytearray()
 
+		self.container.append(Protocol.request_id, callback, None)
+
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
 		data_container.extend(struct.pack('i', Protocol.request_id))
@@ -70,7 +72,6 @@ class Protocol:
 		Protocol.request_id += 1
 		Protocol.request_lock.release()
 
-		self.container.append(Protocol.request_id, callback, lambda: self._radio.send(receiver_mac, data_container))
 
 		self._radio.send(receiver_mac, data_container)
 
