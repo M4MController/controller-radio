@@ -30,7 +30,7 @@ class Protocol:
 	request_id = 0
 	request_lock = Lock()
 
-	def __init__(self, radio: XBee, timeout: float = 5):
+	def __init__(self, radio: XBee, timeout: float = 30):
 		radio.on_message_received = self.on_message_received
 		self._radio = radio
 		self._signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
