@@ -37,6 +37,13 @@ class Container:
 
 		return request
 
+	def removeByCondition(self, condition):
+		self.lock.acquire()
+		for request_id in self._map.keys():
+			if condition(self._map[request_id]):
+				self._map.pop(request_id)
+		self.lock.release()
+
 	def iterate(self, action):
 		self.lock.acquire()
 		for request_id in self._map.keys():

@@ -46,7 +46,7 @@ class Protocol:
 	# If they aren't - tries to refetch (probably data's been lost)
 	def monitor(self):
 		time = datetime.now()
-		self.container.iterate(lambda request: request.touch() if (time - request.timestamp).seconds > self.timeout else None)
+		self.container.removeByCondition(lambda request: (time - request.timestamp).seconds > self.timeout)
 
 	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
