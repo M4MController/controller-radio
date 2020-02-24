@@ -40,7 +40,7 @@ class Protocol:
 		self.timeout = timeout
 
 		timer = Timer(self.monitor)
-		timer.fire(timeout, True)
+		# timer.fire(timeout, True)
 
 	# Checks if any requests are not fullfilled for more than %timeout% period
 	# If they aren't - tries to refetch (probably data's been lost)
