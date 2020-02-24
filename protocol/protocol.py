@@ -2,10 +2,12 @@ import logging
 import struct
 import typing
 from multiprocessing import Lock
+from datetime import datetime
 
 from protocol.container import Container
 from sign import Signifier
 from radio.xbee import XBee
+from protocol.timer import Timer
 
 data_type = typing.Union[bytearray, bytes]
 
@@ -28,19 +30,29 @@ class Protocol:
 	request_id = 0
 	request_lock = Lock()
 
-	def __init__(self, radio: XBee):
+	def __init__(self, radio: XBee, timeout: float = 5):
 		radio.on_message_received = self.on_message_received
 		self._radio = radio
 		self._signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
 		self.container = Container()
 		self.introduce_subscribers = []
 		self.ask_subscribers = []
+		self.timeout = timeout
 
-	def event(self, event: int, callback):
+		timer = Timer(self.monitor)
+		timer.fire(timeout, True)
+
+	# Checks if any requests are not fullfilled for more than %timeout% period
+	# If they aren't - tries to refetch (probably data's been lost)
+	def monitor(self):
+		time = datetime.now()
+		self.container.iterate(lambda request: request.touch() if (time - request.timestamp).seconds > self.timeout else None)
+
+	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
-			self.introduce_subscribers.append(callback)
+			self.introduce_subscribers.append(success)
 		elif event == EVENT_ASK:
-			self.ask_subscribers.append(callback)
+			self.ask_subscribers.append(success)
 		else:
 			raise Exception("Unknown event")
 
@@ -50,8 +62,6 @@ class Protocol:
 	def sign_request(self, receiver_mac: data_type, data: data_type, callback):
 		data_container = bytearray()
 
-		self.container.append(Protocol.request_id, callback)
-
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
 		data_container.extend(struct.pack('i', Protocol.request_id))
@@ -59,6 +69,8 @@ class Protocol:
 		data_container.extend(data)
 		Protocol.request_id += 1
 		Protocol.request_lock.release()
+
+		self.container.append(Protocol.request_id, callback, lambda: self._radio.send(receiver_mac, data_container))
 
 		self._radio.send(receiver_mac, data_container)
 
