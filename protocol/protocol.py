@@ -40,7 +40,7 @@ class Protocol:
 		self.timeout = timeout
 
 		timer = Timer(self.monitor)
-		# timer.fire(timeout, True)
+		timer.fire(timeout, True)
 
 	# Checks if any requests are not fullfilled for more than %timeout% period
 	# If they aren't - tries to refetch (probably data's been lost)
@@ -59,10 +59,10 @@ class Protocol:
 	# Send data to sign to node with receiver_mac
 	# receiver_mac should be bytearray of size 6
 	# Data should be bytearray or bytes
-	def sign_request(self, receiver_mac: data_type, data: data_type, callback):
+	def sign_request(self, receiver_mac: data_type, data: data_type, callback, failure):
 		data_container = bytearray()
 
-		self.container.append(Protocol.request_id, callback, None)
+		self.container.append(Protocol.request_id, callback, failure)
 
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
@@ -71,7 +71,6 @@ class Protocol:
 		data_container.extend(data)
 		Protocol.request_id += 1
 		Protocol.request_lock.release()
-
 
 		self._radio.send(receiver_mac, data_container)
 
@@ -92,8 +91,8 @@ class Protocol:
 
 	# Called when signed data is received
 	def on_signed_data_received(self, request_id: int, public_key: data_type, signature: data_type):
-		callback = self.container.remove(request_id)
-		callback(public_key, signature)
+		request = self.container.remove(request_id)
+		request.success(public_key, signature)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]

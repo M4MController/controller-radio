@@ -41,7 +41,7 @@ class Container:
 		self.lock.acquire()
 		for request_id in self._map.keys():
 			if condition(self._map[request_id]):
-				self._map.pop(request_id)
+				self._map.pop(request_id).failure()
 		self.lock.release()
 
 	def iterate(self, action):

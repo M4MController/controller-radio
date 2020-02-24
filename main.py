@@ -27,7 +27,10 @@ async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
         else:
             loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
 
-    protocol.sign_request(device, data, callback)
+    def failure():
+        loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
+
+    protocol.sign_request(device, data, callback, failure)
 
     return await future
 
