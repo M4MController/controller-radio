@@ -9,8 +9,4 @@ class Request:
 
 	def touch(self):
 		self.timestamp = datetime.now()
-
-		if self.failure is not None:
-			self.failure()
-
 		return self

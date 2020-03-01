@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import struct
 import typing
@@ -7,9 +8,9 @@ from datetime import datetime
 from protocol.container import Container
 from sign import Signifier
 from radio.xbee import XBee
-from protocol.timer import Timer
 
 data_type = typing.Union[bytearray, bytes]
+loop = asyncio.get_event_loop()
 
 EVENT_INTRODUCE = 1
 EVENT_ASK = 2
@@ -39,14 +40,17 @@ class Protocol:
 		self.ask_subscribers = []
 		self.timeout = timeout
 
-		timer = Timer(self.monitor)
-		timer.fire(timeout, True)
+		self.monitor()
 
-	# Checks if any requests are not fullfilled for more than %timeout% period
-	# If they aren't - tries to refetch (probably data's been lost)
 	def monitor(self):
+		"""
+		Checks if any requests are not fullfilled for more than %timeout% period
+		If they aren't - tries to refetch (probably data's been lost)
+		"""
 		time = datetime.now()
-		self.container.removeByCondition(lambda request: (time - request.timestamp).seconds > self.timeout)
+		self.container.remove_by_condition(lambda request: (time - request.timestamp).seconds > self.timeout)
+		loop.call_later(self.timeout, lambda: self.monitor())
+
 
 	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
