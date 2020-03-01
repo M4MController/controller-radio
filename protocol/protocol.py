@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import struct
 import typing
 from multiprocessing import Lock
@@ -66,14 +67,14 @@ class Protocol:
 	def sign_request(self, receiver_mac: data_type, data: data_type, callback, failure):
 		data_container = bytearray()
 
-		self.container.append(Protocol.request_id, callback, failure)
+		request_id = random.randint(0, 4000000)
+		self.container.append(request_id, callback, failure)
 
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
-		data_container.extend(struct.pack('i', Protocol.request_id))
+		data_container.extend(struct.pack('i', request_id))
 		data_container.extend(struct.pack('i', len(data)))
 		data_container.extend(data)
-		Protocol.request_id += 1
 		Protocol.request_lock.release()
 
 		self._radio.send(receiver_mac, data_container)
