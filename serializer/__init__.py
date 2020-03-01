@@ -19,6 +19,8 @@ class BaseModel:
     print(data)
     b = Good.deserialize(data)
     print(b.price, b.index, a.data)
+
+    NOTE: You must use python 3.6 or higher to use this class. Details: https://stackoverflow.com/a/39537308
     """
 
     fields = []
