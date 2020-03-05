@@ -2,9 +2,6 @@ import asyncio
 import logging
 import os
 import sys
-import time
-
-from threading import Timer
 
 from argparse import ArgumentParser
 
@@ -28,7 +25,7 @@ async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
             loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
 
     def failure():
-        loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
+        loop.call_soon_threadsafe(future.set_exception, Exception('Data transfer failed'))
 
     protocol.sign_request(device, data, callback, failure)
 
@@ -39,6 +36,7 @@ async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
     parser.add_argument('--db-uri', required=True)
+    parser.add_argument('--timeout', type=float, default=30)
 
     use_stubs = bool(os.environ.get('USE_STUBS', False))
 
@@ -48,31 +46,32 @@ async def main():
         xbee = XBee(args.device)
         xbee.open()
 
-        protocol = Protocol(xbee)
+        protocol = Protocol(xbee, args.timeout)
     else:
         signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
 
     database = Database(args.db_uri)
 
     while True:
-        unsigned_data = database.get_unsigned_data()
+        try:
+            unsigned_data = database.get_unsigned_data()
 
-        if not use_stubs:
-            device = await protocol.discover_first_remote_device()
-            if device is None:
-                logging.info('No devices nearby')
-                continue
-            logging.info('Nearby device found: %s', device)
+            if not use_stubs:
+                device = await protocol.discover_first_remote_device()
+                if device is None:
+                    logging.info('No devices nearby')
+                    continue
+                logging.info('Nearby device found: %s', device)
 
-        if not use_stubs:
-            for data in unsigned_data:
-                sign = await sign_data(protocol, data.get_data_for_sign(), device)
-                database.set_sign(data, sign)
-        else:
-            for data in unsigned_data:
-                sign = signifier.sign(data.get_data_for_sign())
-                database.set_sign(data, sign)
-
+                for data in unsigned_data:
+                    sign = await sign_data(protocol, data.get_data_for_sign(), device)
+                    database.set_sign(data, sign)
+            else:
+                for data in unsigned_data:
+                    sign = signifier.sign(data.get_data_for_sign())
+                    database.set_sign(data, sign)
+        except Exception as e:
+            logging.error(e)
     xbee.close()
 
 

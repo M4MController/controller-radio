@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import random
 import struct
 import typing
 from multiprocessing import Lock
@@ -7,9 +9,9 @@ from datetime import datetime
 from protocol.container import Container
 from sign import Signifier
 from radio.xbee import XBee
-from protocol.timer import Timer
 
 data_type = typing.Union[bytearray, bytes]
+loop = asyncio.get_event_loop()
 
 EVENT_INTRODUCE = 1
 EVENT_ASK = 2
@@ -39,14 +41,17 @@ class Protocol:
 		self.ask_subscribers = []
 		self.timeout = timeout
 
-		timer = Timer(self.monitor)
-		timer.fire(timeout, True)
+		self.monitor()
 
-	# Checks if any requests are not fullfilled for more than %timeout% period
-	# If they aren't - tries to refetch (probably data's been lost)
 	def monitor(self):
+		"""
+		Checks if any requests are not fullfilled for more than %timeout% period
+		If they aren't - tries to refetch (probably data's been lost)
+		"""
 		time = datetime.now()
-		self.container.removeByCondition(lambda request: (time - request.timestamp).seconds > self.timeout)
+		self.container.remove_by_condition(lambda request: (time - request.timestamp).seconds > self.timeout)
+		loop.call_later(self.timeout, lambda: self.monitor())
+
 
 	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
@@ -62,14 +67,14 @@ class Protocol:
 	def sign_request(self, receiver_mac: data_type, data: data_type, callback, failure):
 		data_container = bytearray()
 
-		self.container.append(Protocol.request_id, callback, failure)
+		request_id = random.randint(0, 4000000)
+		self.container.append(request_id, callback, failure)
 
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
-		data_container.extend(struct.pack('i', Protocol.request_id))
+		data_container.extend(struct.pack('i', request_id))
 		data_container.extend(struct.pack('i', len(data)))
 		data_container.extend(data)
-		Protocol.request_id += 1
 		Protocol.request_lock.release()
 
 		self._radio.send(receiver_mac, data_container)

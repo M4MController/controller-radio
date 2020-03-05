@@ -1,3 +1,4 @@
+import logging
 from multiprocessing import Lock
 
 from protocol.request import Request
@@ -16,6 +17,7 @@ class Container:
 		self.lock.acquire()
 		self._map[request_id] = Request(success, failure)
 		self.lock.release()
+		logging.info('%d: request registered', request_id)
 
 	def touch(self, request_id: int):
 		if request_id not in self._map:
@@ -35,12 +37,15 @@ class Container:
 		request = self._map.pop(request_id)
 		self.lock.release()
 
+		logging.info('%d: request removed', request_id)
+
 		return request
 
-	def removeByCondition(self, condition):
+	def remove_by_condition(self, condition):
 		self.lock.acquire()
-		for request_id in self._map.keys():
+		for request_id in list(self._map.keys()):
 			if condition(self._map[request_id]):
+				logging.error('%d: timeout error', request_id)
 				self._map.pop(request_id).failure()
 		self.lock.release()
 

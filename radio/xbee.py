@@ -86,15 +86,19 @@ class XBee:
 
     def _on_data_received(self, message):
         init_frame = InitFrame.deserialize(message.data)
-        if init_frame.id in self._buffer:
-            frame = Frame.deserialize(message.data)
-            self._buffer[frame.id][1].extend(frame.data)
+        try:
+            if init_frame.id in self._buffer:
+                frame = Frame.deserialize(message.data)
+                self._buffer[frame.id][1].extend(frame.data)
 
-            full_size = self._buffer[frame.id][0]
-            if len(self._buffer[frame.id][1]) >= full_size:
-                self.on_message_received(get_address(message.remote_device), self._buffer[frame.id][1][:full_size])
-                del self._buffer[frame.id]
-        else:
-            self._buffer[init_frame.id] = [init_frame.size, bytearray()]
+                full_size = self._buffer[frame.id][0]
+                if len(self._buffer[frame.id][1]) >= full_size:
+                    self.on_message_received(get_address(message.remote_device), self._buffer[frame.id][1][:full_size])
+                    del self._buffer[frame.id]
+            else:
+                self._buffer[init_frame.id] = [init_frame.size, bytearray()]
+        except Exception as e:
+            logger.error(e)
+            self._buffer.pop(init_frame.id, None)
 
 
