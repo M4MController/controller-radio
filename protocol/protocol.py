@@ -52,7 +52,6 @@ class Protocol:
 		self.container.remove_by_condition(lambda request: (time - request.timestamp).seconds > self.timeout)
 		loop.call_later(self.timeout, lambda: self.monitor())
 
-
 	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
 			self.introduce_subscribers.append(success)
