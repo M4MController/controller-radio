@@ -1,7 +1,10 @@
 import asyncio
+import bz2
+import gzip
 import logging
 import random
 import typing
+import lzma
 
 from digi.xbee.devices import XBeeDevice, RemoteXBeeDevice
 from digi.xbee.models.address import XBee64BitAddress
@@ -54,6 +57,12 @@ class XBee:
 
     def send(self, remote_address: bytearray, data: typing.Union[bytearray, bytes]):
         data = XBee._normalize_data(data)
+
+        print("test:lzma", len(data), len(data) / len(lzma.compress(data)))
+        print("test:gzip", len(data), len(data) / len(gzip.compress(data)))
+        print("test:bz2", len(data), len(data) / len(bz2.compress(data)))
+        print("test:")
+
         remote_device = RemoteXBeeDevice(self._device, x64bit_addr=XBee64BitAddress(remote_address))
 
         id = random.randint(0, 4000000)
