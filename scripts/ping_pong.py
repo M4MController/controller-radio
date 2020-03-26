@@ -6,7 +6,7 @@ from argparse import ArgumentParser
 from random import randint
 
 from radio.xbee import XBee
-from serializer import BaseModel
+from utils.serializer import BaseModel
 
 
 class Ball(BaseModel):

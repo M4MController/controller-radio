@@ -1,6 +1,4 @@
-import struct
-
-from serializer.serializers import serializers_map
+from utils.serializer.serializers import serializers_map
 
 
 class BaseModel:
