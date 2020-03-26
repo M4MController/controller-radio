@@ -6,7 +6,8 @@ import typing
 from digi.xbee.devices import XBeeDevice, RemoteXBeeDevice
 from digi.xbee.models.address import XBee64BitAddress
 
-from serializer import BaseModel
+from utils.expiring_dict import ExpiringDict
+from utils.serializer import BaseModel
 
 logger = logging.getLogger()
 
@@ -30,7 +31,7 @@ class Frame(BaseModel):
 
 
 class XBee:
-    _buffer = {}
+    _buffer = ExpiringDict(default_ttl=120)
 
     def __init__(self, port: str, baud_rate: int = 9600):
         self._device = XBeeDevice(port, baud_rate)

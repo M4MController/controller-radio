@@ -4,11 +4,10 @@ import random
 import struct
 import typing
 from multiprocessing import Lock
-from datetime import datetime
 
-from protocol.container import Container
-from sign import Signifier
 from radio.xbee import XBee
+from sign import Signifier
+from utils.expiring_dict import ExpiringDict
 
 data_type = typing.Union[bytearray, bytes]
 loop = asyncio.get_event_loop()
@@ -36,21 +35,10 @@ class Protocol:
 		radio.on_message_received = self.on_message_received
 		self._radio = radio
 		self._signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
-		self.container = Container()
+		self._expiring_dict = ExpiringDict(default_ttl=timeout)
 		self.introduce_subscribers = []
 		self.ask_subscribers = []
 		self.timeout = timeout
-
-		self.monitor()
-
-	def monitor(self):
-		"""
-		Checks if any requests are not fullfilled for more than %timeout% period
-		If they aren't - tries to refetch (probably data's been lost)
-		"""
-		time = datetime.now()
-		self.container.remove_by_condition(lambda request: (time - request.timestamp).seconds > self.timeout)
-		loop.call_later(self.timeout, lambda: self.monitor())
 
 	def event(self, event: int, success):
 		if event == EVENT_INTRODUCE:
@@ -60,14 +48,16 @@ class Protocol:
 		else:
 			raise Exception("Unknown event")
 
-	# Send data to sign to node with receiver_mac
-	# receiver_mac should be bytearray of size 6
-	# Data should be bytearray or bytes
 	def sign_request(self, receiver_mac: data_type, data: data_type, callback, failure):
+		"""
+		Send data to sign to node with receiver_mac
+		receiver_mac should be bytearray of size 6
+		Data should be bytearray or bytes
+		"""
 		data_container = bytearray()
 
 		request_id = random.randint(0, 4000000)
-		self.container.append(request_id, callback, failure)
+		self._expiring_dict.set(request_id, callback, on_delete=lambda *args: failure())
 
 		Protocol.request_lock.acquire()
 		data_container.append(self.COMMAND_REQUEST_SIGN)
@@ -93,10 +83,13 @@ class Protocol:
 
 		self._radio.send(remote_address, data_container)
 
-	# Called when signed data is received
 	def on_signed_data_received(self, request_id: int, public_key: data_type, signature: data_type):
-		request = self.container.remove(request_id)
-		request.success(public_key, signature)
+		"""
+		Called when signed data is received
+		"""
+		request = self._expiring_dict.pop(request_id, None)
+		if request:
+			request(public_key, signature)
 
 	def on_message_received(self, remote_address: bytearray, data: bytearray):
 		command = data[0]
