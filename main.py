@@ -4,6 +4,7 @@ import os
 import sys
 
 from argparse import ArgumentParser
+from datetime import datetime
 
 from database import Database
 from radio.xbee import XBee
@@ -64,7 +65,9 @@ async def main():
                 logging.info('Nearby device found: %s', device)
 
                 for data in unsigned_data:
+                    start = datetime.now()
                     sign = await sign_data(protocol, data.get_data_for_sign(), device)
+                    logging.info("Signed in %s", datetime.now() - start)
                     database.set_sign(data, sign)
             else:
                 for data in unsigned_data:
