@@ -32,7 +32,17 @@ def generate_struct_serializer(fmt: str) -> type:
     return A
 
 
-class ByteArray(Serializer):
+class ByteSerializer(Serializer):
+    @staticmethod
+    def serialize(data) -> bytearray:
+        return bytearray([data])
+
+    @staticmethod
+    def deserialize(data: bytearray) -> (int, int):
+        return data[0], 1,
+
+
+class ByteArraySerializer(Serializer):
     @staticmethod
     def serialize(data: bytearray) -> bytearray:
         result = bytearray(struct.pack('i', len(data)))
@@ -46,7 +56,8 @@ class ByteArray(Serializer):
 
 
 serializers_map = {
-    bytearray: ByteArray,
+    'byte': ByteSerializer,
+    bytearray: ByteArraySerializer,
     int: generate_struct_serializer('i'),
     float: generate_struct_serializer('d'),
 }

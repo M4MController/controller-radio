@@ -6,36 +6,58 @@ import sys
 from argparse import ArgumentParser
 
 from database import Database
+from protocol.commands import SignDataRequest, SignDataResponse
+from protocol.protocol import Protocol, data_type
 from radio.xbee import XBee
-from protocol.protocol import Protocol
 from sign import Signature, Signifier
+from utils.concurrency import set_interval
 
-logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+use_stubs = bool(os.environ.get("USE_STUBS", False))
+
+if not use_stubs:
+    signifier = Signifier.from_files("public_key.pem", "private_key.pem")
 
 
-async def sign_data(protocol: Protocol, data: bytearray, device: bytearray):
-    future = asyncio.Future()
-    loop = asyncio.get_event_loop()
+def sign_data_handler(remote_address: data_type, request: SignDataRequest):
+    sign = signifier.sign(request.data)
+    return SignDataResponse(public_key=sign.public_key, sign=sign.sign)
 
-    def callback(public_key, sign):
-        signature = Signature(public_key, sign)
-        if Signifier.verify(data, signature):
-            loop.call_soon_threadsafe(future.set_result, signature)
-        else:
-            loop.call_soon_threadsafe(future.set_exception, Exception('sign verification failed'))
 
-    def failure():
-        loop.call_soon_threadsafe(future.set_exception, Exception('Data transfer failed'))
+async def sign_data_task(protocol, database):
+    unsigned_data = database.get_unsigned_data()
 
-    protocol.sign_request(device, data, callback, failure)
+    if not use_stubs:
+        device = await protocol.radio.discover_first_remote_device()
+        if device is None:
+            logging.info("No devices nearby")
+            return
+        logging.info("Nearby device found: %s", device)
 
-    return await future
+        for data in unsigned_data:
+            sign_response = await protocol.send_request(
+                device,
+                SignDataRequest(data=data.get_data_for_sign()),
+            )
+            database.set_sign(data, Signature(public_key=sign_response.public_key, sign=sign_response.sign))
+    else:
+        for data in unsigned_data:
+            sign = signifier.sign(data.get_data_for_sign())
+            database.set_sign(data, sign)
+            await asyncio.sleep(1)
 
 
 async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
-    parser.add_argument('--db-uri', required=True)
+    parser.add_argument('--db-uri', required=False)
     parser.add_argument('--timeout', type=float, default=30)
 
     use_stubs = bool(os.environ.get('USE_STUBS', False))
@@ -47,35 +69,15 @@ async def main():
         xbee.open()
 
         protocol = Protocol(xbee, args.timeout)
-    else:
-        signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
+        protocol.on_request(SignDataRequest, sign_data_handler)
 
-    database = Database(args.db_uri)
+        if args.db_uri:
+            database = Database(args.db_uri)
 
-    while True:
-        try:
-            unsigned_data = database.get_unsigned_data()
-
-            if not use_stubs:
-                device = await protocol.discover_first_remote_device()
-                if device is None:
-                    logging.info('No devices nearby')
-                    continue
-                logging.info('Nearby device found: %s', device)
-
-                for data in unsigned_data:
-                    sign = await sign_data(protocol, data.get_data_for_sign(), device)
-                    database.set_sign(data, sign)
-            else:
-                for data in unsigned_data:
-                    sign = signifier.sign(data.get_data_for_sign())
-                    database.set_sign(data, sign)
-        except Exception as e:
-            logging.error(e)
-    xbee.close()
+            set_interval(sign_data_task, 1, protocol, database)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    asyncio.async(main())
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    loop.close()
+    loop.run_forever()
