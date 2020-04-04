@@ -7,6 +7,7 @@ from argparse import ArgumentParser
 
 from database import Database
 from protocol.commands import SignDataRequest, SignDataResponse
+from protocol.packets import CurrentLocationPacket
 from protocol.protocol import Protocol, data_type
 from radio.xbee import XBee
 from sign import Signature, Signifier
@@ -29,6 +30,10 @@ if not use_stubs:
 def sign_data_handler(remote_address: data_type, request: SignDataRequest):
     sign = signifier.sign(request.data)
     return SignDataResponse(public_key=sign.public_key, sign=sign.sign)
+
+
+def gps_data_received(remote_address: data_type, packet: CurrentLocationPacket):
+    print(packet)
 
 
 async def sign_data_task(protocol, database):
@@ -54,6 +59,12 @@ async def sign_data_task(protocol, database):
             await asyncio.sleep(1)
 
 
+async def send_gps_task(protocol, database):
+    device_location = database.get_latest_gps()
+    gps_packet = CurrentLocationPacket.create_from_device(device_location)
+    protocol.send_packet_broadcast(gps_packet)
+
+
 async def main():
     parser = ArgumentParser()
     parser.add_argument('--device', required=True)
@@ -69,12 +80,14 @@ async def main():
         xbee.open()
 
         protocol = Protocol(xbee, args.timeout)
+        protocol.on_packet(CurrentLocationPacket, gps_data_received)
         protocol.on_request(SignDataRequest, sign_data_handler)
 
         if args.db_uri:
             database = Database(args.db_uri)
 
             set_interval(sign_data_task, 1, protocol, database)
+            set_interval(send_gps_task, 1, protocol, database)
 
 
 if __name__ == "__main__":

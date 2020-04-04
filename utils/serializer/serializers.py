@@ -61,3 +61,8 @@ serializers_map = {
     int: generate_struct_serializer('i'),
     float: generate_struct_serializer('d'),
 }
+
+
+def get_serializer(value_type):
+    if value_type in serializers_map:
+        return serializers_map[value_type]

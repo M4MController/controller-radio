@@ -1,5 +1,7 @@
-from random import randint, random
+from random import randint
 
+from device_selector import Device
+from device_selector.gvector import GVector
 from utils.serializer import BaseModel
 
 
@@ -48,3 +50,31 @@ class PingPongPacket(BasePacket):
         "index": int,
         "payload": bytearray,
     }
+
+
+class CurrentLocationPacket(BasePacket):
+    ID = 4
+
+    class Vector(BaseModel):
+        fields = {
+            "latitude": float,
+            "longitude": float,
+            "altitude": float,
+        }
+
+        @classmethod
+        def create_from_gvector(cls, vector: GVector):
+            return cls(latitude=vector.latitude, longitude=vector.longitude, altitude=vector.altitude)
+
+    fields = {
+        **BasePacket.fields,
+        "position": Vector,
+        "velocity": Vector
+    }
+
+    @classmethod
+    def create_from_device(cls, device: Device):
+        return cls(
+            position=cls.Vector.create_from_gvector(device.position),
+            velocity=cls.Vector.create_from_gvector(device.velocity),
+        )

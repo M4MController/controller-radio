@@ -86,6 +86,10 @@ class XBee:
         pass
 
     def _on_data_received(self, message):
+        if message.is_broadcast:
+            # there are no support for fragmentation of broadcast messages yet :(
+            return self.on_message_received(get_address(message.remote_device), message.data)
+
         init_frame = InitFrame.deserialize(message.data)
         try:
             if init_frame.id in self._buffer:
