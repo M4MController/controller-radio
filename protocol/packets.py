@@ -66,6 +66,9 @@ class CurrentLocationPacket(BasePacket):
         def create_from_gvector(cls, vector: GVector):
             return cls(latitude=vector.latitude, longitude=vector.longitude, altitude=vector.altitude)
 
+        def to_gvector(self) -> GVector:
+            return GVector(latitude=self.latitude, longitude=self.longitude, altitude=self.altitude)
+
     fields = {
         **BasePacket.fields,
         "position": Vector,
@@ -78,3 +81,6 @@ class CurrentLocationPacket(BasePacket):
             position=cls.Vector.create_from_gvector(device.position),
             velocity=cls.Vector.create_from_gvector(device.velocity),
         )
+
+    def to_device(self) -> Device:
+        return Device(position=self.position.to_gvector(), velocity=self.velocity.to_gvector())

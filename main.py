@@ -12,6 +12,7 @@ from protocol.protocol import Protocol, data_type
 from radio.xbee import XBee
 from sign import Signature, Signifier
 from utils.concurrency import set_interval
+from utils.expiring_dict import ExpiringDict
 
 logging.basicConfig(
     stream=sys.stdout,
@@ -32,8 +33,11 @@ def sign_data_handler(remote_address: data_type, request: SignDataRequest):
     return SignDataResponse(public_key=sign.public_key, sign=sign.sign)
 
 
+gps_cache = ExpiringDict(default_ttl=1.5)
+
+
 def gps_data_received(remote_address: data_type, packet: CurrentLocationPacket):
-    print(packet)
+    gps_cache.set(hash(str(remote_address)), packet.to_device())
 
 
 async def sign_data_task(protocol, database):
