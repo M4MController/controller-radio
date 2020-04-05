@@ -1,4 +1,4 @@
-from utils.serializer.serializers import serializers_map
+from utils.serializer.serializers import get_serializer
 
 
 class BaseModel:
@@ -38,9 +38,13 @@ class BaseModel:
         result = bytearray()
 
         for key in self.fields:
-            s = serializers_map[self.fields[key]]
+            value_type = self.fields[key]
             value = getattr(self, key)
-            result.extend(s.serialize(value))
+            serializer = get_serializer(value_type)
+            if serializer is None:
+                result.extend(value.serialize())
+            else:
+                result.extend(serializer.serialize(value))
 
         return result
 
@@ -50,11 +54,23 @@ class BaseModel:
 
         args = {}
         for key in cls.fields:
-            s = serializers_map[cls.fields[key]]
-            d, i = s.deserialize(data[index:])
-            index += i
-            args[key] = d
+            value_type = cls.fields[key]
+            serializer = get_serializer(value_type)
+            raw_value = data[index:]
+            if serializer is None:
+                value = value_type.deserialize(raw_value)
+                index += len(value.raw_bytes)
+            else:
+                value, i = serializer.deserialize(raw_value)
+                index += i
+            args[key] = value
 
         result = cls(**args)
-        result.raw_bytes = data
+        result.raw_bytes = data[:index]
         return result
+
+    def __str__(self):
+        return "{class_name}({data})".format(
+            class_name=self.__class__.__name__,
+            data=", ".join(["{key}={value}".format(key=key, value=getattr(self, key)) for key in self.fields]),
+        )

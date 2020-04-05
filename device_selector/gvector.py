@@ -1,7 +1,16 @@
+from datetime import timedelta
 from math import sqrt
 
 
 class GVector:
+	@staticmethod
+	def create_from_two_points(a, b, delta_t: timedelta):
+		return GVector(
+			latitude=(b.latitude - a.latitude) / delta_t.seconds,
+			longitude=(b.longitude - a.longitude) / delta_t.seconds,
+			altitude=(b.altitude - a.altitude) / delta_t.seconds,
+		)
+
 	def __init__(self, latitude: float, longitude: float, altitude: float):
 		self.latitude = latitude
 		self.longitude = longitude

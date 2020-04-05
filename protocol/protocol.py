@@ -43,6 +43,10 @@ class Protocol:
         """
         Sends a single packet to all devices, does not wait for response.
         """
+        logger.info(
+            "Packet sent broadcast: id=%s",
+            packet.ID,
+        )
         self._radio.send_broadcast(packet.serialize())
 
     def on_packet(self, packet_type: type, success):

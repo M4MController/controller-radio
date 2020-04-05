@@ -76,7 +76,7 @@ class ExpiringDict:
         if not ttl:
             ttl = self.__default_ttl
 
-        expiring_task = loop.call_later(ttl, lambda: self.__delete_by_expire(key))
+        expiring_task = loop.call_soon_threadsafe(loop.call_later, ttl, self.__delete_by_expire, key)
 
         self.__lock.acquire()
         self.__meta[key] = ExpiringDictMeta(expiring_task=expiring_task, on_delete=on_delete)
@@ -94,3 +94,9 @@ class ExpiringDict:
 
     def __len__(self):
         return len(self.__data)
+
+    def __str__(self):
+        return str(self.__data)
+
+    def values(self):
+        return self.__data.values()
