@@ -97,3 +97,6 @@ class ExpiringDict:
 
     def __str__(self):
         return str(self.__data)
+
+    def values(self):
+        return self.__data.values()

@@ -6,6 +6,7 @@ import sys
 from argparse import ArgumentParser
 
 from database import Database
+from device_selector import Device, pick_available
 from protocol.commands import SignDataRequest, SignDataResponse
 from protocol.packets import CurrentLocationPacket
 from protocol.protocol import Protocol, data_type
@@ -33,22 +34,46 @@ def sign_data_handler(remote_address: data_type, request: SignDataRequest):
     return SignDataResponse(public_key=sign.public_key, sign=sign.sign)
 
 
-gps_cache = ExpiringDict(default_ttl=1.5)
+gps_cache = ExpiringDict(default_ttl=2)
+
+
+class GpsDeviceWithAddress(Device):
+    def __init__(self, address, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.address = address
 
 
 def gps_data_received(remote_address: data_type, packet: CurrentLocationPacket):
-    gps_cache.set(hash(str(remote_address)), packet.to_device())
+    logging.info("GPS received: %s", packet)
+    gps_cache.set(
+        hash(str(remote_address)),
+        GpsDeviceWithAddress(
+            address=remote_address,
+            position=packet.position.to_gvector(),
+            velocity=packet.velocity.to_gvector()),
+    )
 
 
 async def sign_data_task(protocol, database):
     unsigned_data = database.get_unsigned_data()
 
     if not use_stubs:
-        device = await protocol.radio.discover_first_remote_device()
+        device = None
+        logging.info("Devices with GPS info: %d", len(gps_cache))
+        if len(gps_cache):
+            me = database.get_latest_gps()
+            devices = pick_available(me=me, others=gps_cache.values())
+            logging.info("Devices available by GPS: %d", len(devices))
+            if len(devices):
+                logging.info("Device picked: %s", devices[0].address)
+
+        if device is None:
+            device = await protocol.radio.discover_first_remote_device()
+            logging.info("Nearby device found: %s", device)
+
         if device is None:
             logging.info("No devices nearby")
             return
-        logging.info("Nearby device found: %s", device)
 
         for data in unsigned_data:
             sign_response = await protocol.send_request(
@@ -66,6 +91,7 @@ async def sign_data_task(protocol, database):
 async def send_gps_task(protocol, database):
     device_location = database.get_latest_gps()
     gps_packet = CurrentLocationPacket.create_from_device(device_location)
+    logging.info("Send GPS: %s", gps_packet)
     protocol.send_packet_broadcast(gps_packet)
 
 

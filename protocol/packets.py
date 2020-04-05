@@ -72,7 +72,7 @@ class CurrentLocationPacket(BasePacket):
     fields = {
         **BasePacket.fields,
         "position": Vector,
-        "velocity": Vector
+        "velocity": Vector,
     }
 
     @classmethod

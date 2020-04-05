@@ -59,13 +59,14 @@ class BaseModel:
             raw_value = data[index:]
             if serializer is None:
                 value = value_type.deserialize(raw_value)
+                index += len(value.raw_bytes)
             else:
                 value, i = serializer.deserialize(raw_value)
                 index += i
             args[key] = value
 
         result = cls(**args)
-        result.raw_bytes = data
+        result.raw_bytes = data[:index]
         return result
 
     def __str__(self):
