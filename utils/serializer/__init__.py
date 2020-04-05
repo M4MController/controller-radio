@@ -21,7 +21,7 @@ class BaseModel:
     NOTE: You must use python 3.6 or higher to use this class. Details: https://stackoverflow.com/a/39537308
     """
 
-    fields = []
+    fields: dict = {}
 
     def __init__(self, **kwargs):
         for key in kwargs:
@@ -55,4 +55,6 @@ class BaseModel:
             index += i
             args[key] = d
 
-        return cls(**args)
+        result = cls(**args)
+        result.raw_bytes = data
+        return result

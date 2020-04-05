@@ -1,125 +1,146 @@
 import asyncio
 import logging
-import random
-import struct
 import typing
-from multiprocessing import Lock
 
 from radio.xbee import XBee
-from sign import Signifier
 from utils.expiring_dict import ExpiringDict
+
+from .packets import BasePacket, BaseRequestPacket, BaseResponsePacket
+
+logger = logging.getLogger(__name__)
 
 data_type = typing.Union[bytearray, bytes]
 loop = asyncio.get_event_loop()
 
-EVENT_INTRODUCE = 1
-EVENT_ASK = 2
 
-
-class Vector:
-	def __init__(self, lon: float, lat: float):
-		self.lon = float(lon)
-		self.lat = float(lat)
+def request_uuid(address: data_type, request: BaseRequestPacket):
+    return request.command_id << 8 + request.request_id  # todo: add address
 
 
 class Protocol:
-	COMMAND_INTRODUCE = 1
-	COMMAND_REQUEST_SIGN = 2
-	COMMAND_RESPONSE_SIGN = 3
-	COMMAND_ASK_NETWORK = 4
+    def __init__(self, radio: XBee, timeout: float = 30):
+        radio.on_message_received = self._packet_handler
 
-	request_id = 0
-	request_lock = Lock()
+        self._radio = radio
+        self._expiring_dict = ExpiringDict(default_ttl=timeout)
+        self._packet_subscriptions = {}
+        self._command_handlers = {}
 
-	def __init__(self, radio: XBee, timeout: float = 30):
-		radio.on_message_received = self.on_message_received
-		self._radio = radio
-		self._signifier = Signifier.from_files('public_key.pem', 'private_key.pem')
-		self._expiring_dict = ExpiringDict(default_ttl=timeout)
-		self.introduce_subscribers = []
-		self.ask_subscribers = []
-		self.timeout = timeout
+        self.on_packet(BaseRequestPacket, self._request_handler)
+        self.on_packet(BaseResponsePacket, self._response_handler)
 
-	def event(self, event: int, success):
-		if event == EVENT_INTRODUCE:
-			self.introduce_subscribers.append(success)
-		elif event == EVENT_ASK:
-			self.ask_subscribers.append(success)
-		else:
-			raise Exception("Unknown event")
+    @property
+    def radio(self):
+        return self._radio
 
-	def sign_request(self, receiver_mac: data_type, data: data_type, callback, failure):
-		"""
-		Send data to sign to node with receiver_mac
-		receiver_mac should be bytearray of size 6
-		Data should be bytearray or bytes
-		"""
-		data_container = bytearray()
+    def send_packet(self, remote_address: data_type, packet: BasePacket):
+        """
+        Sends a single packet to a remote device, does not wait for response.
+        """
+        self._radio.send(remote_address, packet.serialize())
 
-		request_id = random.randint(0, 4000000)
-		self._expiring_dict.set(request_id, callback, on_delete=lambda *args: failure())
+    def send_packet_broadcast(self, packet: BasePacket):
+        """
+        Sends a single packet to all devices, does not wait for response.
+        """
+        self._radio.send_broadcast(packet.serialize())
 
-		Protocol.request_lock.acquire()
-		data_container.append(self.COMMAND_REQUEST_SIGN)
-		data_container.extend(struct.pack('i', request_id))
-		data_container.extend(struct.pack('i', len(data)))
-		data_container.extend(data)
-		Protocol.request_lock.release()
+    def on_packet(self, packet_type: type, success):
+        """
+        Registers a callback on single packet received.
+        """
+        if issubclass(packet_type, BasePacket):
+            self._packet_subscriptions[packet_type.ID] = (packet_type, success)
+        else:
+            raise Exception("event must be a subclass of BaseEvent")
 
-		self._radio.send(receiver_mac, data_container)
+    def _packet_handler(self, remote_address: data_type, data: bytearray):
+        """
+        Handler calls when single packed received by remote device.
+        """
+        packet = BasePacket.deserialize(data)
+        logger.info("Packet received. remote_address=%s id=%s", remote_address, packet.id)
+        if packet.id in self._packet_subscriptions:
+            request_class, callback = self._packet_subscriptions[packet.id]
+            callback(remote_address, request_class.deserialize(data))
 
-	# Called on someone requests for his data to be signed
-	def on_sign_request_received(self, remote_address: data_type, request_id: int, data: data_type):
-		sign = self._signifier.sign(data)
+    async def send_request(self, remote_address: data_type, request: BaseRequestPacket, timeout=None):
+        """
+        Sends a request to remote device, waits for response and returns it.
+        """
+        future = asyncio.Future()
 
-		data_container = bytearray()
+        def callback(address: data_type, response: BaseResponsePacket):
+            loop.call_soon_threadsafe(future.set_result, request.response_class.deserialize(response.raw_bytes))
 
-		data_container.append(self.COMMAND_RESPONSE_SIGN)
-		data_container.extend(struct.pack('i', request_id))
-		data_container.extend(struct.pack('i', len(sign.public_key)))
-		data_container.extend(sign.public_key)
-		data_container.extend(struct.pack('i', len(sign.sign)))
-		data_container.extend(sign.sign)
+        def failure():
+            loop.call_soon_threadsafe(future.set_exception, Exception("Data transfer failed by timeout"))
 
-		self._radio.send(remote_address, data_container)
+        self._expiring_dict.set(request_uuid(remote_address, request), callback, on_delete=failure, ttl=timeout)
 
-	def on_signed_data_received(self, request_id: int, public_key: data_type, signature: data_type):
-		"""
-		Called when signed data is received
-		"""
-		request = self._expiring_dict.pop(request_id, None)
-		if request:
-			request(public_key, signature)
+        logger.info(
+            "Request sent: remote_address=%s command_id=%s request_id=%s",
+            remote_address,
+            request.command_id,
+            request.request_id,
+        )
+        self.send_packet(remote_address, request)
 
-	def on_message_received(self, remote_address: bytearray, data: bytearray):
-		command = data[0]
+        return await future
 
-		logging.info('Command received: %s %s', remote_address, command)
+    def on_request(self, request_type: type, handler):
+        """
+        Registers a request handler.
+        """
+        if issubclass(request_type, BaseRequestPacket):
+            def h(remote_address: data_type, request: BaseRequestPacket):
+                response = handler(remote_address, request_type.deserialize(request.raw_bytes))
 
-		if command == self.COMMAND_REQUEST_SIGN:
-			request_id, = struct.unpack('i', data[1: 5])
-			size, = struct.unpack('i', data[5:9])
-			data_for_sign = data[9:9 + size]
+                if not isinstance(response, BaseResponsePacket):
+                    raise Exception("response must be an instance of BaseResponsePacket")
 
-			self.on_sign_request_received(remote_address, request_id, data_for_sign)
+                response.request_id = request.request_id
+                logger.info(
+                    "Response sent. remote_address=%s command_id=%s request_id=%s",
+                    remote_address,
+                    response.command_id,
+                    response.request_id,
+                )
+                self.send_packet(remote_address, response)
 
-			return
+            self._command_handlers[request_type.COMMAND_ID] = h
+        else:
+            raise Exception("event must be a subclass of BaseRequestPacket")
 
-		if command == self.COMMAND_RESPONSE_SIGN:
-			request_id, = struct.unpack('i', data[1:5])
-			key_size, = struct.unpack('i', data[5:9])
-			key_right_index = 9 + key_size
-			signature_size_right_index = 4 + key_right_index
-			key = data[9:key_right_index]
-			signature_size, = struct.unpack('i', data[key_right_index:signature_size_right_index])
-			signature = data[signature_size_right_index:signature_size_right_index + signature_size]
+    def _request_handler(self, remote_address: data_type, request: BaseRequestPacket):
+        """
+        Handler calls when request received from remote device.
+        """
+        logger.info(
+            "Request received. remote_address=%s command_id=%s request_id=%s",
+            remote_address,
+            request.command_id,
+            request.request_id,
+        )
+        if request.command_id in self._command_handlers:
+            internal_handler = self._command_handlers[request.command_id]
+            internal_handler(remote_address, request)
+        else:
+            logging.error("No handler")
 
-			self.on_signed_data_received(request_id, key, signature)
+    def _response_handler(self, remote_address: data_type, response: BaseResponsePacket):
+        """
+        Handler called when response received from remote device.
+        """
+        logger.info(
+            "Response received. remote_address=%s command_id=%s request_id=%s",
+            remote_address,
+            response.command_id,
+            response.request_id,
+        )
 
-			return
-
-	def on_unknown_command_received(self, remote_address: bytearray, data: bytearray):
-		pass
-
-	def discover_first_remote_device(self):
-		return self._radio.discover_first_remote_device()
+        callback = self._expiring_dict.pop(request_uuid(remote_address, response), None)
+        if callback is not None:
+            callback(remote_address, response)
+        else:
+            logger.error("No callback")
