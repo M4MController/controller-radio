@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 use_stubs = bool(os.environ.get("USE_STUBS", False))
 
-if not use_stubs:
-    signifier = Signifier.from_files("public_key.pem", "private_key.pem")
+
+signifier = Signifier.from_files("public_key.pem", "private_key.pem")
 
 
 def sign_data_handler(remote_address: data_type, request: SignDataRequest):
@@ -84,8 +84,8 @@ async def sign_data_task(protocol, database):
     else:
         for data in unsigned_data:
             sign = signifier.sign(data.get_data_for_sign())
-            database.set_sign(data, sign)
             await asyncio.sleep(1)
+            database.set_sign(data, sign)
 
 
 async def send_gps_task(protocol, database):
@@ -118,9 +118,13 @@ async def main():
 
             set_interval(sign_data_task, 1, protocol, database)
             set_interval(send_gps_task, 1, protocol, database)
+    else:
+        if args.db_uri:
+            database = Database(args.db_uri)
+            set_interval(sign_data_task, 1, None, database)
 
 
 if __name__ == "__main__":
-    asyncio.async(main())
+    asyncio.ensure_future(main())
     loop = asyncio.get_event_loop()
     loop.run_forever()
