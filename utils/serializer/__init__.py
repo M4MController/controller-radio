@@ -66,7 +66,7 @@ class BaseModel:
             args[key] = value
 
         result = cls(**args)
-        result.raw_bytes = data[:index]
+        result.raw_bytes = data
         return result
 
     def __str__(self):
