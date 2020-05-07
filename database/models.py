@@ -3,7 +3,7 @@ import json
 from sqlalchemy import (
     Column,
     LargeBinary,
-    Integer,
+    Integer, String,
 )
 
 from sqlalchemy.ext.declarative import declarative_base
@@ -16,7 +16,7 @@ Base = declarative_base()
 
 class Sensor(Base):
     __tablename__ = "sensors"
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True)
     sensor_type = Column(Integer)
 
 
@@ -27,7 +27,7 @@ class SensorData(Base):
     data = Column(JSON, nullable=False)
     sign = Column(LargeBinary)
     signer = Column(LargeBinary)
-    sensor_id = Column(Integer, nullable=False)
+    sensor_id = Column(String, nullable=False)
 
     def get_data_for_sign(self) -> bytearray:
         unsigned_data = bytearray()

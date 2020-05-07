@@ -62,10 +62,12 @@ async def sign_data_task(protocol, database):
         logging.info("Devices with GPS info: %d", len(gps_cache))
         if len(gps_cache):
             me = database.get_latest_gps()
-            devices = pick_available(me=me, others=gps_cache.values())
+            if me:
+                devices = pick_available(me=me, others=gps_cache.values())
             logging.info("Devices available by GPS: %d", len(devices))
             if len(devices):
                 logging.info("Device picked: %s", devices[0].address)
+                device = devices[0].address
 
         if device is None:
             device = await protocol.radio.discover_first_remote_device()
@@ -90,9 +92,10 @@ async def sign_data_task(protocol, database):
 
 async def send_gps_task(protocol, database):
     device_location = database.get_latest_gps()
-    gps_packet = CurrentLocationPacket.create_from_device(device_location)
-    logging.info("Send GPS: %s", gps_packet)
-    protocol.send_packet_broadcast(gps_packet)
+    if device_location:
+        gps_packet = CurrentLocationPacket.create_from_device(device_location)
+        logging.info("Send GPS: %s", gps_packet)
+        protocol.send_packet_broadcast(gps_packet)
 
 
 async def main():
